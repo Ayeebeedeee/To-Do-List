@@ -1,200 +1,180 @@
 import tkinter as tk
-from tkinter import *
-from tkinter import messagebox
+from tkinter import messagebox, simpledialog
 from tkcalendar import Calendar
 from datetime import datetime, timedelta
-import threading
-import time
 
-root = Tk()
-root.title("To-Do List with Deadlines")
-root.geometry("500x800+400+100")
+# Initialize window
+root = tk.Tk()
+root.title("To-Do List with Calendar")
+root.geometry("500x700+400+100")
 root.resizable(False, False)
 
-task_list = []  # Stores (task, deadline)
+task_list = []  # List to store tasks and deadlines
 
+# Function to add a task
 def addTask():
     task = task_entry.get()
     deadline = cal.get_date()
-    task_entry.delete(0, END)
+    task_entry.delete(0, tk.END)
 
     if task:
+        task_list.append((task, deadline))
         with open(r"D:\Images\tasklist.txt", 'a') as taskfile:
             taskfile.write(f"{task} | {deadline}\n")
-        task_list.append((task, deadline))
-        checkAndNotifyDeadlines()  # Check deadlines after adding
         updateListbox()
+        checkAndNotifyDeadlines()
 
+# Function to delete a selected task
 def deleteTask():
     global task_list
-    task_info = listbox.get(ANCHOR)
+    task_info = listbox.get(tk.ANCHOR)
+
     if task_info:
-        task_text = task_info.split(" | ")[0]  # Extract task name
-        task_list = [t for t in task_list if t[0] != task_text]
+        task_text, deadline = task_info.split(" | ")
+        task_list = [(t, d) for (t, d) in task_list if t != task_text]
+        
         with open(r"D:\Images\tasklist.txt", 'w') as taskfile:
             for task, deadline in task_list:
                 taskfile.write(f"{task} | {deadline}\n")
-        updateListbox()
+        
+        listbox.delete(tk.ANCHOR)
 
+# Function to update task name or deadline
 def updateDeadline():
-    """Update the deadline of the selected task."""
     global task_list
-    task_info = listbox.get(ANCHOR)
+    task_info = listbox.get(tk.ANCHOR)
     if not task_info:
-        messagebox.showerror("Error", "Please select a task to update its deadline.")
+        messagebox.showerror("Error", "Please select a task to update.")
         return
 
-    task_text = task_info.split(" | ")[0]  # Extract task name
+    task_text, old_deadline = task_info.split(" | ")
+
+    # Ask for updated task name
+    new_task_text = simpledialog.askstring("Modify Task", "Edit task name:", initialvalue=task_text)
     new_deadline = cal.get_date()
 
+    if not new_task_text:
+        new_task_text = task_text
+
     for i, (task, deadline) in enumerate(task_list):
-        if task == task_text:
-            task_list[i] = (task, new_deadline)  # Update deadline
+        if task == task_text and deadline == old_deadline:
+            task_list[i] = (new_task_text, new_deadline)
             break
 
-    # Save updated tasks to file
     with open(r"D:\Images\tasklist.txt", 'w') as taskfile:
         for task, deadline in task_list:
             taskfile.write(f"{task} | {deadline}\n")
 
-    messagebox.showinfo("Updated", f"Deadline for '{task_text}' updated to {new_deadline}")
-    checkAndNotifyDeadlines()
+    messagebox.showinfo("Updated", f"Task '{task_text}' updated to '{new_task_text}' with deadline {new_deadline}")
     updateListbox()
+    checkAndNotifyDeadlines()
 
+# Function to load existing tasks
 def openTaskFile():
     try:
-        global task_list
         with open(r"D:\Images\tasklist.txt", "r") as taskfile:
             tasks = taskfile.readlines()
-        for line in tasks:
-            task, deadline = line.strip().split(" | ")
-            task_list.append((task, deadline))
-        checkAndNotifyDeadlines()  # Check deadlines on startup
-        updateListbox()
-    except FileNotFoundError:
-        open(r"D:\Images\tasklist.txt", "w").close()
+        for task in tasks:
+            if task.strip():
+                task_text, deadline = task.strip().split(" | ")
+                task_list.append((task_text, deadline))
+                listbox.insert(tk.END, f"{task_text} | {deadline}")
+        checkAndNotifyDeadlines()
+    except:
+        open(r"D:\Images\tasklist.txt", 'w').close()
 
-def checkAndNotifyDeadlines():
-    """Check if tasks are nearing their deadline and notify the user."""
-    today = datetime.today()
-    urgent_tasks = []
-
-    for task, deadline in task_list:
-        deadline_date = datetime.strptime(deadline, "%m/%d/%y")
-        days_left = (deadline_date - today).days
-
-        if 0 <= days_left <= 3:  # Notify for tasks due in 3 days or less
-            urgent_tasks.append(f"⚠️ '{task}' is due in {days_left} days!")
-
-    if urgent_tasks:
-        messagebox.showwarning("Upcoming Deadlines!", "\n".join(urgent_tasks))
-
-    updateListbox()
-
-def checkAndRemoveOverdueTasks():
-    """Check if any tasks are overdue, notify the user, and remove them."""
-    global task_list
-    today = datetime.today()
-    updated_tasks = []
-
-    for task, deadline in task_list:
-        deadline_date = datetime.strptime(deadline, "%m/%d/%y")
-        days_left = (deadline_date - today).days
-
-        if days_left < 0:
-            messagebox.showwarning("Task Expired", f"The task '{task}' has expired and will be removed.")
-        else:
-            updated_tasks.append((task, deadline))  # Keep non-expired tasks
-
-    task_list = updated_tasks
-    with open(r"D:\Images\tasklist.txt", "w") as taskfile:
-        for task, deadline in task_list:
-            taskfile.write(f"{task} | {deadline}\n")
-
-    updateListbox()
-
+# Function to update Listbox display with colors
 def updateListbox():
-    listbox.delete(0, END)
-    today = datetime.today()
+    listbox.delete(0, tk.END)
+    today = datetime.today().date()
 
     for task, deadline in task_list:
-        deadline_date = datetime.strptime(deadline, "%m/%d/%y")
+        deadline_date = datetime.strptime(deadline, "%m/%d/%Y").date()
         days_left = (deadline_date - today).days
 
-        # Set task color based on urgency
         if days_left < 0:
-            color = "red"  # Overdue
-        elif days_left <= 3:
-            color = "orange"  # Urgent
+            color = "gray"  # Expired tasks
+        elif days_left == 0:
+            color = "red"  # Due today
+        elif days_left <= 2:
+            color = "#FF6347"  # Tomato Red (Very Urgent)
+        elif days_left <= 4:
+            color = "#FFA500"  # Orange (Moderately Urgent)
+        elif days_left <= 7:
+            color = "#FFD700"  # Gold Yellow (Upcoming)
+        elif days_left <= 14:
+            color = "#9ACD32"  # Yellow-Green (Enough Time)
         else:
-            color = "green"  # Safe zone
+            color = "green"  # Dark Green (Plenty of Time)
 
-        listbox.insert(END, f"{task} | {deadline} ({days_left} days left)")
-        listbox.itemconfig(END, {'fg': color})
+        listbox.insert(tk.END, f"{task} | {deadline}")
+        listbox.itemconfig(tk.END, {'fg': color})
 
-# UI Elements
+# Function to check deadlines and notify users
+def checkAndNotifyDeadlines():
+    today = datetime.today().date()
+    upcoming_tasks = []
 
-image_icon = PhotoImage(file=r"D:\Images\task.png")
-root.iconphoto(False, image_icon)
+    for task, deadline in task_list:
+        deadline_date = datetime.strptime(deadline, "%m/%d/%Y").date()
+        days_left = (deadline_date - today).days
 
-# Top bar
-Label(root, text="To-Do List with Deadlines", font="arial 20 bold", fg="black").pack(pady=10)
+        if days_left < 0:
+            messagebox.showwarning("Deadline Passed", f"Task '{task}' deadline has passed! Removing it.")
+            task_list.remove((task, deadline))
+        elif days_left == 0:
+            upcoming_tasks.append(f"Task '{task}' is due TODAY!")
+        elif days_left <= 3:
+            upcoming_tasks.append(f"Task '{task}' is due in {days_left} days.")
 
-frame = Frame(root, width=450, height=50, bg="white")
-frame.place(x=20, y=60)
+    if upcoming_tasks:
+        messagebox.showinfo("Upcoming Deadlines", "\n".join(upcoming_tasks))
 
-task_entry = Entry(frame, width=22, font="arial 15", bd=0)
+    updateListbox()
+
+# UI Components
+
+# Top Section
+tk.Label(root, text="To-Do List", font="Arial 20 bold", fg="white", bg="#32405b").pack(fill=tk.X)
+
+# Task Entry
+frame = tk.Frame(root, width=500, height=50, bg="white")
+frame.place(x=0, y=80)
+
+task_entry = tk.Entry(frame, width=25, font="Arial 14")
 task_entry.place(x=10, y=10)
 task_entry.focus()
 
-# Beautiful Calendar Design
-cal_frame = Frame(root, bd=3, relief=RIDGE, bg="white")
-cal_frame.place(x=20, y=120)
+# Add Button
+tk.Button(frame, text="ADD", font="Arial 14 bold", width=8, bg="#5a95ff", fg="#fff", command=addTask).place(x=350, y=5)
 
-cal_label = Label(cal_frame, text="Select Deadline:", font="arial 12 bold", bg="white", fg="#32405b")
-cal_label.pack()
+# Calendar for Deadline Selection
+tk.Label(root, text="Select Deadline:", font="Arial 12 bold").place(x=10, y=140)
+cal = Calendar(root, selectmode="day", year=2025, month=3, day=17, date_pattern="mm/dd/yyyy", background="lightblue", foreground="black", borderwidth=2)
+cal.place(x=150, y=140)
 
-cal = Calendar(cal_frame, selectmode="day", year=2025, month=3, day=17,
-               background="lightblue", foreground="black", 
-               selectbackground="blue", selectforeground="white",
-               borderwidth=2, font=("Arial", 12), 
-               headersbackground="navy", headersforeground="white",
-               othermonthbackground="lightgray", othermonthforeground="black")
-cal.pack()
+# Task Listbox
+frame1 = tk.Frame(root, bd=3, width=700, height=280, bg="#32405b")
+frame1.pack(pady=(220, 0))
+frame1.place(x=40, y=350)
 
-# Add Task Button
-add_button = Button(root, text="ADD", font="Arial 12 bold", width=10, bg="#5a95ff", fg="#fff", bd=0, command=addTask)
-add_button.place(x=320, y=100)
-
-# Update Deadline Button
-update_button = Button(root, text="Update Deadline", font="Arial 12 bold", width=15, bg="#ff9500", fg="white", bd=0, command=updateDeadline)
-update_button.place(x=350, y=310)
-
-# Listbox
-frame1 = Frame(root, bd=3, width=450, height=300, bg="#32405b")
-frame1.place(x=20, y=360)
-
-listbox = Listbox(frame1, font=('arial', 12), width=50, height=15, bg="white", fg="black", cursor="hand2", selectbackground="#5a95ff")
-listbox.pack(side=LEFT, fill=BOTH, padx=2)
-
-scrollbar = Scrollbar(frame1)
-scrollbar.pack(side=RIGHT, fill=BOTH)
+listbox = tk.Listbox(frame1, font=('Arial', 12), width=45, height=8, bg="#32405b", fg="white", selectbackground="#5a95ff")
+listbox.pack(side=tk.LEFT, fill=tk.BOTH, padx=2)
+scrollbar = tk.Scrollbar(frame1)
+scrollbar.pack(side=tk.RIGHT, fill=tk.BOTH)
 
 listbox.config(yscrollcommand=scrollbar.set)
 scrollbar.config(command=listbox.yview)
 
-# Delete Task Button
-delete_icon = PhotoImage(file=r"D:\Images\delete.png")
-Button(root, image=delete_icon, bd=0, command=deleteTask).pack(side=BOTTOM, pady=10)
+# Buttons
+button_frame = tk.Frame(root)
+button_frame.pack(pady=10)
 
-openTaskFile()
+tk.Button(button_frame, text="Update Task", font="Arial 12", width=12, bg="#FFA500", fg="black", command=updateDeadline).grid(row=0, column=0, padx=5)
+tk.Button(button_frame, text="Delete Task", font="Arial 12", width=12, bg="#FF6347", fg="white", command=deleteTask).grid(row=0, column=1, padx=5)
 
-def start_notification_loop():
-    while True:
-        time.sleep(60)
-        checkAndNotifyDeadlines()
+# Load saved tasks
+openTaskFile()  
 
-thread = threading.Thread(target=start_notification_loop, daemon=True)
-thread.start()
-
+# Main loop
 root.mainloop()
